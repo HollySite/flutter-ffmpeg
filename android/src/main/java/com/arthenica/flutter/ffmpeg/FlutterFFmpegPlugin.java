@@ -22,6 +22,8 @@ package com.arthenica.flutter.ffmpeg;
 import android.content.Context;
 import android.os.AsyncTask;
 
+import androidx.annotation.NonNull;
+
 import com.arthenica.mobileffmpeg.AbiDetect;
 import com.arthenica.mobileffmpeg.Config;
 import com.arthenica.mobileffmpeg.ExecuteCallback;
@@ -43,12 +45,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 
 /**
  * <h3>Flutter FFmpeg Plugin</h3>
@@ -56,7 +58,7 @@ import io.flutter.plugin.common.PluginRegistry.Registrar;
  * @author Taner Sener
  * @since 0.1.0
  */
-public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.StreamHandler {
+public class FlutterFFmpegPlugin implements FlutterPlugin, MethodCallHandler, EventChannel.StreamHandler {
     public static final String LIBRARY_NAME = "flutter-ffmpeg";
     public static final String PLATFORM_NAME = "android";
 
@@ -89,34 +91,43 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
     public static final String EVENT_STAT = "FlutterFFmpegStatisticsCallback";
     public static final String EVENT_EXECUTE = "FlutterFFmpegExecuteCallback";
 
+    private MethodChannel channel;
+    private EventChannel eventChannel;
+    private FlutterFFmpegResultHandler flutterFFmpegResultHandler;
+
+    private Context applicationContext;
+
     private EventChannel.EventSink eventSink;
-    private final Registrar registrar;
-    private final FlutterFFmpegResultHandler flutterFFmpegResultHandler;
 
-    /**
-     * Registers plugin to registry.
-     *
-     * @param registrar receiver of plugin registration
-     */
-    public static void registerWith(final Registrar registrar) {
-        FlutterFFmpegPlugin flutterFFmpegPlugin = new FlutterFFmpegPlugin(registrar);
+    // --- FlutterPlugin
 
-        final MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_ffmpeg");
-        channel.setMethodCallHandler(flutterFFmpegPlugin);
+    @Override
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+        channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_ffmpeg");
+        channel.setMethodCallHandler(this);
 
-        final EventChannel eventChannel = new EventChannel(registrar.messenger(), "flutter_ffmpeg_event");
-        eventChannel.setStreamHandler(flutterFFmpegPlugin);
+        eventChannel = new EventChannel(binding.getBinaryMessenger(), "flutter_ffmpeg_event");
+        eventChannel.setStreamHandler(this);
+
+        flutterFFmpegResultHandler = new FlutterFFmpegResultHandler();
+
+        applicationContext = binding.getApplicationContext();
     }
 
-    private FlutterFFmpegPlugin(Registrar registrar) {
-        this.registrar = registrar;
+    @Override
+    public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        channel.setMethodCallHandler(null);
+        channel = null;
 
-        this.flutterFFmpegResultHandler = new FlutterFFmpegResultHandler();
+        eventChannel.setStreamHandler(null);
+        eventChannel = null;
+
+        flutterFFmpegResultHandler = null;
+
+        applicationContext = null;
     }
 
-    private Context getActiveContext() {
-        return (registrar.activity() != null) ? registrar.activity() : registrar.context();
-    }
+    // --- MethodCallHandler
 
     /**
      * Handles method calls.
@@ -253,7 +264,7 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
             String path = call.argument("fontDirectory");
             Map<String, String> map = call.argument("fontNameMap");
 
-            Config.setFontDirectory(getActiveContext(), path, map);
+            Config.setFontDirectory(applicationContext, path, map);
 
         } else if (call.method.equals("getPackageName")) {
 
@@ -283,7 +294,7 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
 
         } else if (call.method.equals("registerNewFFmpegPipe")) {
 
-            final String pipe = Config.registerNewFFmpegPipe(getActiveContext());
+            final String pipe = Config.registerNewFFmpegPipe(applicationContext);
             flutterFFmpegResultHandler.success(result, toStringMap(KEY_PIPE, pipe));
 
         } else if (call.method.equals("setEnvironmentVariable")) {
@@ -302,6 +313,8 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
         }
     }
 
+    // --- StreamHandler
+
     @Override
     public void onListen(Object o, EventChannel.EventSink eventSink) {
         this.eventSink = eventSink;
@@ -311,6 +324,8 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
     public void onCancel(Object o) {
         this.eventSink = null;
     }
+
+    // ---
 
     protected void emitLogMessage(final LogMessage logMessage) {
         final HashMap<String, Object> logWrapperMap = new HashMap<>();
@@ -443,5 +458,4 @@ public class FlutterFFmpegPlugin implements MethodCallHandler, EventChannel.Stre
 
         return list;
     }
-
 }
